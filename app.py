@@ -1,407 +1,168 @@
 """
-Social Media AI Strategy Dashboard
-Beautiful, interactive web app for predictions and insights
+Social Media AI Model Training Script
+This creates the "brain" that learns from your data
 """
 
-import streamlit as st
 import pandas as pd
-import pickle
-import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime
 import numpy as np
+import joblib
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.preprocessing import LabelEncoder
+import warnings
+warnings.filterwarnings('ignore')
 
-# Page configuration
-st.set_page_config(
-    page_title="AI Social Media Strategy Predictor",
-    page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="expanded"
+print("🚀 Starting AI Model Training...")
+print("=" * 50)
+
+# Step 1: Load your CSV data
+print("📂 Loading your data...")
+df = pd.read_csv('social_media_dataset.csv')
+print(f"✅ Loaded {len(df)} rows of data")
+
+# Step 2: Clean and prepare the data
+print("\n🧹 Cleaning data...")
+
+# Convert date to useful features
+df['post_date'] = pd.to_datetime(df['post_date'])
+df['hour'] = df['post_date'].dt.hour
+df['day_of_week'] = df['post_date'].dt.dayofweek
+df['month'] = df['post_date'].dt.month
+
+# Create engagement rate (our main success metric)
+df['engagement_rate'] = (df['likes'] + df['comments_count'] + df['shares']) / df['views'] * 100
+df['engagement_rate'] = df['engagement_rate'].fillna(0)
+
+# Classify content as high/medium/low performing
+df['performance_class'] = pd.cut(
+    df['engagement_rate'], 
+    bins=3, 
+    labels=['Low', 'Medium', 'High']
 )
 
-# Custom CSS for better styling
-st.markdown("""
-    <style>
-    .main {
-        padding: 0rem 0rem;
-    }
-    .stAlert {
-        background-color: #f0f2f6;
-        border-left: 5px solid #4CAF50;
-    }
-    h1 {
-        color: #1f77b4;
-        font-weight: bold;
-    }
-    .metric-card {
-        background-color: #f8f9fa;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    </style>
-    """, unsafe_allow_html=True)
+print("✅ Data cleaned successfully")
 
-# Load the trained model
-@st.cache_resource
-def load_model():
-    try:
-        with open('social_media_model.pkl', 'rb') as f:
-            return pickle.load(f)
-    except FileNotFoundError:
-        st.error("❌ Model not found! Please run 'python train_model.py' first.")
-        st.stop()
+# Step 3: Prepare features for AI
+print("\n🔧 Preparing features for AI...")
 
-@st.cache_resource
-def load_insights():
-    try:
-        with open('insights.pkl', 'rb') as f:
-            return pickle.load(f)
-    except FileNotFoundError:
-        return None
+# Encode categorical variables
+le_platform = LabelEncoder()
+le_content_type = LabelEncoder()
+le_category = LabelEncoder()
+le_language = LabelEncoder()
+le_age = LabelEncoder()
+le_gender = LabelEncoder()
 
-# Load model and data
-model_package = load_model()
-insights = load_insights()
+df['platform_encoded'] = le_platform.fit_transform(df['platform'])
+df['content_type_encoded'] = le_content_type.fit_transform(df['content_type'])
+df['category_encoded'] = le_category.fit_transform(df['content_category'])
+df['language_encoded'] = le_language.fit_transform(df['language'])
+df['age_encoded'] = le_age.fit_transform(df['audience_age_distribution'])
+df['gender_encoded'] = le_gender.fit_transform(df['audience_gender_distribution'])
+df['sponsored_encoded'] = df['is_sponsored'].map({True: 1, False: 0})
 
-classifier = model_package['classifier']
-regressor = model_package['regressor']
-encoders = model_package['encoders']
-feature_cols = model_package['feature_columns']
-training_data = model_package['training_data']
+# Select features for prediction
+feature_columns = [
+    'platform_encoded', 'content_type_encoded', 'category_encoded',
+    'language_encoded', 'content_length', 'hour', 'day_of_week',
+    'month', 'follower_count', 'age_encoded', 'gender_encoded',
+    'sponsored_encoded'
+]
 
-# Title and header
-st.title("🎯 AI-Powered Social Media Strategy Predictor")
-st.markdown("### Transform your social media analytics into actionable insights")
-st.markdown("---")
+X = df[feature_columns]
+y_class = df['performance_class']
+y_engagement = df['engagement_rate']
 
-# Sidebar for inputs
-st.sidebar.header("📊 Input Your Content Details")
-st.sidebar.markdown("Fill in the details below to get AI predictions")
+print("✅ Features prepared")
 
-# User inputs
-platform = st.sidebar.selectbox(
-    "Platform",
-    options=list(encoders['platform'].classes_),
-    help="Which social media platform are you posting on?"
-)
+# Step 4: Train Classification Model (predicts High/Medium/Low)
+print("\n🧠 Training Classification AI Model...")
+X_train, X_test, y_train, y_test = train_test_split(X, y_class, test_size=0.2, random_state=42)
 
-content_type = st.sidebar.selectbox(
-    "Content Type",
-    options=list(encoders['content_type'].classes_),
-    help="What type of content are you creating?"
-)
+clf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+clf_model.fit(X_train, y_train)
 
-category = st.sidebar.selectbox(
-    "Content Category",
-    options=list(encoders['category'].classes_),
-    help="What is the main category of your content?"
-)
+accuracy = clf_model.score(X_test, y_test)
+print(f"✅ Classification Model Accuracy: {accuracy*100:.2f}%")
 
-language = st.sidebar.selectbox(
-    "Language",
-    options=list(encoders['language'].classes_),
-    help="What language is your content in?"
-)
+# Step 5: Train Regression Model (predicts exact engagement rate)
+print("\n🧠 Training Regression AI Model...")
+X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(X, y_engagement, test_size=0.2, random_state=42)
 
-content_length = st.sidebar.slider(
-    "Content Length (characters/seconds)",
-    min_value=10,
-    max_value=600,
-    value=150,
-    help="Length of your content"
-)
+reg_model = RandomForestRegressor(n_estimators=100, random_state=42)
+reg_model.fit(X_train_reg, y_train_reg)
 
-follower_count = st.sidebar.number_input(
-    "Follower Count",
-    min_value=0,
-    value=50000,
-    step=1000,
-    help="Your current follower count"
-)
+score = reg_model.score(X_test_reg, y_test_reg)
+print(f"✅ Regression Model R² Score: {score:.2f}")
 
-age_group = st.sidebar.selectbox(
-    "Target Audience Age",
-    options=list(encoders['age'].classes_)
-)
+# Step 6: Calculate feature importance
+print("\n📊 Calculating what matters most...")
+feature_importance = pd.DataFrame({
+    'feature': feature_columns,
+    'importance': clf_model.feature_importances_
+}).sort_values('importance', ascending=False)
 
-gender = st.sidebar.selectbox(
-    "Target Audience Gender",
-    options=list(encoders['gender'].classes_)
-)
+print("\nTop 5 Most Important Factors:")
+for idx, row in feature_importance.head(5).iterrows():
+    print(f"  • {row['feature']}: {row['importance']*100:.1f}%")
 
-is_sponsored = st.sidebar.checkbox("Is this sponsored content?")
+# Step 7: Save everything using JOBLIB
+print("\n💾 Saving AI models and encoders...")
 
-st.sidebar.markdown("---")
+# Create a package with everything we need
+model_package = {
+    'classifier': clf_model,
+    'regressor': reg_model,
+    'encoders': {
+        'platform': le_platform,
+        'content_type': le_content_type,
+        'category': le_category,
+        'language': le_language,
+        'age': le_age,
+        'gender': le_gender
+    },
+    'feature_columns': feature_columns,
+    'feature_importance': feature_importance,
+    'training_data': df[['platform', 'content_category', 'content_type', 
+                         'language', 'hour', 'day_of_week', 
+                         'engagement_rate', 'performance_class']].sample(min(100, len(df)))
+}
 
-# Time selection
-st.sidebar.subheader("⏰ Posting Schedule")
-posting_date = st.sidebar.date_input("Posting Date", datetime.now())
-posting_time = st.sidebar.time_input("Posting Time", datetime.now().time())
+# Save models as .joblib files
+joblib.dump(model_package, 'social_media_model.joblib', compress=3)
+print("✅ Model saved as 'social_media_model.joblib'")
 
-hour = posting_time.hour
-day_of_week = posting_date.weekday()
-month = posting_date.month
+# Step 8: Generate insights
+print("\n📈 Generating Insights...")
 
-# Predict button
-predict_button = st.sidebar.button("🚀 Get AI Predictions", type="primary", use_container_width=True)
+best_platform = df.groupby('platform')['engagement_rate'].mean().idxmax()
+best_content_type = df.groupby('content_type')['engagement_rate'].mean().idxmax()
+best_category = df.groupby('content_category')['engagement_rate'].mean().idxmax()
+best_hour = df.groupby('hour')['engagement_rate'].mean().idxmax()
+best_day = df.groupby('day_of_week')['engagement_rate'].mean().idxmax()
 
-# Main content area
-if predict_button:
-    # Prepare input data
-    input_data = pd.DataFrame({
-        'platform_encoded': [encoders['platform'].transform([platform])[0]],
-        'content_type_encoded': [encoders['content_type'].transform([content_type])[0]],
-        'category_encoded': [encoders['category'].transform([category])[0]],
-        'language_encoded': [encoders['language'].transform([language])[0]],
-        'content_length': [content_length],
-        'hour': [hour],
-        'day_of_week': [day_of_week],
-        'month': [month],
-        'follower_count': [follower_count],
-        'age_encoded': [encoders['age'].transform([age_group])[0]],
-        'gender_encoded': [encoders['gender'].transform([gender])[0]],
-        'sponsored_encoded': [1 if is_sponsored else 0]
-    })
-    
-    # Make predictions
-    performance_pred = classifier.predict(input_data)[0]
-    engagement_pred = regressor.predict(input_data)[0]
-    
-    # Calculate potential reach
-    potential_views = follower_count * 0.15  # Avg 15% reach
-    potential_likes = potential_views * (engagement_pred / 100) * 0.6
-    potential_comments = potential_views * (engagement_pred / 100) * 0.2
-    potential_shares = potential_views * (engagement_pred / 100) * 0.2
-    
-    # Display predictions
-    st.success("✅ AI Analysis Complete!")
-    
-    # Main metrics
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            "Performance Level",
-            performance_pred,
-            delta="Predicted",
-            delta_color="off"
-        )
-    
-    with col2:
-        st.metric(
-            "Engagement Rate",
-            f"{engagement_pred:.2f}%",
-            delta=f"{engagement_pred - insights['avg_engagement']:.2f}% vs avg" if insights else None
-        )
-    
-    with col3:
-        st.metric(
-            "Expected Views",
-            f"{int(potential_views):,}",
-            delta="Estimated"
-        )
-    
-    with col4:
-        st.metric(
-            "Expected Interactions",
-            f"{int(potential_likes + potential_comments + potential_shares):,}",
-            delta="Total"
-        )
-    
-    st.markdown("---")
-    
-    # Detailed breakdown
-    col_left, col_right = st.columns(2)
-    
-    with col_left:
-        st.subheader("📈 Expected Performance Breakdown")
-        
-        breakdown_df = pd.DataFrame({
-            'Metric': ['Views', 'Likes', 'Comments', 'Shares'],
-            'Expected Count': [
-                int(potential_views),
-                int(potential_likes),
-                int(potential_comments),
-                int(potential_shares)
-            ]
-        })
-        
-        fig = px.bar(
-            breakdown_df,
-            x='Metric',
-            y='Expected Count',
-            color='Metric',
-            title='Predicted Engagement Breakdown',
-            text='Expected Count',
-            color_discrete_sequence=px.colors.qualitative.Pastel
-        )
-        fig.update_traces(texttemplate='%{text:,}', textposition='outside')
-        fig.update_layout(showlegend=False, height=400)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col_right:
-        st.subheader("🎯 AI Recommendations")
-        
-        # Generate recommendations
-        recommendations = []
-        
-        if engagement_pred < insights['avg_engagement']:
-            recommendations.append(f"⚠️ Your predicted engagement ({engagement_pred:.2f}%) is below average ({insights['avg_engagement']:.2f}%). Consider optimizing your content.")
-        else:
-            recommendations.append(f"✅ Great! Your content is predicted to perform above average!")
-        
-        # Time recommendation
-        if hour != insights['best_hour']:
-            recommendations.append(f"⏰ Best posting time: {insights['best_hour']}:00 (You selected: {hour}:00)")
-        else:
-            recommendations.append(f"✅ Perfect timing! {hour}:00 is the optimal posting time.")
-        
-        # Platform recommendation
-        if platform != insights['best_platform']:
-            recommendations.append(f"📱 Consider posting on {insights['best_platform']} for higher engagement")
-        
-        # Content type recommendation
-        if content_type != insights['best_content_type']:
-            recommendations.append(f"🎬 {insights['best_content_type']} content typically performs better")
-        
-        # Day recommendation
-        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        if days[day_of_week] != insights['best_day']:
-            recommendations.append(f"📅 {insights['best_day']}s typically get more engagement")
-        
-        for rec in recommendations:
-            st.info(rec)
-    
-    st.markdown("---")
-    
-    # Feature importance
-    st.subheader("🔍 What Drives Engagement?")
-    st.markdown("Based on AI analysis of your data, here are the key factors:")
-    
-    importance_df = model_package['feature_importance'].head(8).copy()
-    importance_df['importance'] = importance_df['importance'] * 100
-    
-    # Rename features for better display
-    feature_names = {
-        'platform_encoded': 'Platform',
-        'content_type_encoded': 'Content Type',
-        'category_encoded': 'Category',
-        'language_encoded': 'Language',
-        'content_length': 'Content Length',
-        'hour': 'Posting Time',
-        'day_of_week': 'Day of Week',
-        'month': 'Month',
-        'follower_count': 'Follower Count',
-        'age_encoded': 'Audience Age',
-        'gender_encoded': 'Audience Gender',
-        'sponsored_encoded': 'Sponsored'
-    }
-    importance_df['feature'] = importance_df['feature'].map(feature_names)
-    
-    fig = px.bar(
-        importance_df,
-        x='importance',
-        y='feature',
-        orientation='h',
-        title='Feature Importance for Your Content',
-        labels={'importance': 'Importance (%)', 'feature': 'Factor'},
-        color='importance',
-        color_continuous_scale='Blues'
-    )
-    fig.update_layout(height=400, showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
-    
-    st.markdown("---")
-    
-    # Comparison with historical data
-    st.subheader("📊 How Does This Compare?")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Engagement by platform
-        platform_data = training_data.groupby('platform')['engagement_rate'].mean().reset_index()
-        fig = px.pie(
-            platform_data,
-            values='engagement_rate',
-            names='platform',
-            title='Average Engagement by Platform',
-            color_discrete_sequence=px.colors.qualitative.Set3
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Engagement by hour
-        hour_data = training_data.groupby('hour')['engagement_rate'].mean().reset_index()
-        fig = px.line(
-            hour_data,
-            x='hour',
-            y='engagement_rate',
-            title='Engagement Rate by Hour of Day',
-            markers=True,
-            color_discrete_sequence=['#1f77b4']
-        )
-        fig.add_vline(x=hour, line_dash="dash", line_color="red", annotation_text="Your time")
-        st.plotly_chart(fig, use_container_width=True)
+days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-else:
-    # Welcome screen
-    st.info("👈 Fill in your content details in the sidebar and click 'Get AI Predictions' to start!")
-    
-    if insights:
-        st.subheader("💡 Quick Insights from Your Data")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Best Platform", insights['best_platform'])
-            st.metric("Best Content Type", insights['best_content_type'])
-        
-        with col2:
-            st.metric("Best Category", insights['best_category'])
-            st.metric("Best Posting Hour", f"{insights['best_hour']}:00")
-        
-        with col3:
-            st.metric("Best Day", insights['best_day'])
-            st.metric("Avg Engagement Rate", f"{insights['avg_engagement']:.2f}%")
-    
-    # Sample visualization
-    st.subheader("📈 Performance Trends")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        platform_perf = training_data.groupby('platform')['engagement_rate'].agg(['mean', 'count']).reset_index()
-        fig = px.bar(
-            platform_perf,
-            x='platform',
-            y='mean',
-            title='Average Engagement by Platform',
-            labels={'mean': 'Avg Engagement Rate (%)', 'platform': 'Platform'},
-            color='mean',
-            color_continuous_scale='Viridis'
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        content_perf = training_data.groupby('content_type')['engagement_rate'].mean().reset_index()
-        fig = px.bar(
-            content_perf,
-            x='content_type',
-            y='engagement_rate',
-            title='Average Engagement by Content Type',
-            labels={'engagement_rate': 'Avg Engagement Rate (%)', 'content_type': 'Content Type'},
-            color='engagement_rate',
-            color_continuous_scale='Plasma'
-        )
-        st.plotly_chart(fig, use_container_width=True)
+insights = {
+    'best_platform': best_platform,
+    'best_content_type': best_content_type,
+    'best_category': best_category,
+    'best_hour': int(best_hour),
+    'best_day': days[int(best_day)],
+    'avg_engagement': df['engagement_rate'].mean()
+}
 
-# Footer
-st.markdown("---")
-st.markdown("""
-    <div style='text-align: center; color: #666; padding: 20px;'>
-        <p>🤖 Powered by AI & Machine Learning | 📊 Built with Streamlit</p>
-        <p>💡 Tip: The more data you train with, the better the predictions!</p>
-    </div>
-    """, unsafe_allow_html=True)
+joblib.dump(insights, 'insights.joblib', compress=3)
+print("✅ Insights saved as 'insights.joblib'")
+
+print("\n🎉 SUCCESS! Your AI is ready!")
+print("=" * 50)
+print("\n📊 Key Insights from Training:")
+print(f"  • Best Platform: {insights['best_platform']}")
+print(f"  • Best Content Type: {insights['best_content_type']}")
+print(f"  • Best Category: {insights['best_category']}")
+print(f"  • Best Time to Post: {insights['best_hour']}:00")
+print(f"  • Best Day: {insights['best_day']}")
+print(f"  • Average Engagement Rate: {insights['avg_engagement']:.2f}%")
+
+print("\n✨ Next step: Run 'streamlit run app.py' to see your dashboard!")
