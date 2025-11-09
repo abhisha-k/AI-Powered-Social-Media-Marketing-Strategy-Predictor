@@ -46,7 +46,7 @@ st.markdown("""
 @st.cache_resource
 def load_model():
     try:
-        return joblib.load('social_media_model.pkl') 
+        return joblib.load('social_media_model.joblib') 
     except FileNotFoundError:
         st.error("❌ Model not found! Please run 'python train_model.py' first.")
         st.stop()
@@ -54,7 +54,7 @@ def load_model():
 @st.cache_resource
 def load_insights():
     try:
-        return joblib.load('insights.pkl') 
+        return joblib.load('insights.joblib') 
     except FileNotFoundError:
         return None
 
@@ -66,7 +66,7 @@ classifier = model_package['classifier']
 regressor = model_package['regressor']
 encoders = model_package['encoders']
 feature_cols = model_package['feature_columns']
-training_data = model_package['training_data']
+sample_stats = model_package.get('sample_stats', {}) 
 
 # Title and header
 st.title("🎯 AI-Powered Social Media Strategy Predictor")
@@ -318,30 +318,41 @@ if predict_button:
     col1, col2 = st.columns(2)
     
     with col1:
-        # Engagement by platform
-        platform_data = training_data.groupby('platform')['engagement_rate'].mean().reset_index()
-        fig = px.pie(
-            platform_data,
-            values='engagement_rate',
-            names='platform',
-            title='Average Engagement by Platform',
-            color_discrete_sequence=px.colors.qualitative.Set3
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
+    # Engagement by platform
+        if sample_stats and 'avg_engagement_by_platform' in sample_stats:
+            platform_data = pd.DataFrame(
+                list(sample_stats['avg_engagement_by_platform'].items()),
+                columns=['platform', 'engagement_rate']
+            )
+            fig = px.pie(
+                platform_data,
+                values='engagement_rate',
+                names='platform',
+                title='Average Engagement by Platform',
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
     with col2:
         # Engagement by hour
-        hour_data = training_data.groupby('hour')['engagement_rate'].mean().reset_index()
-        fig = px.line(
-            hour_data,
-            x='hour',
-            y='engagement_rate',
-            title='Engagement Rate by Hour of Day',
-            markers=True,
-            color_discrete_sequence=['#1f77b4']
-        )
-        fig.add_vline(x=hour, line_dash="dash", line_color="red", annotation_text="Your time")
-        st.plotly_chart(fig, use_container_width=True)
+        if sample_stats and 'avg_engagement_by_hour' in sample_stats:
+            hour_data = pd.DataFrame(
+                list(sample_stats['avg_engagement_by_hour'].items()),
+                columns=['hour', 'engagement_rate']
+            )
+            hour_data['hour'] = hour_data['hour'].astype(int)
+            hour_data = hour_data.sort_values('hour')
+            
+            fig = px.line(
+                hour_data,
+                x='hour',
+                y='engagement_rate',
+                title='Engagement Rate by Hour of Day',
+                markers=True,
+                color_discrete_sequence=['#1f77b4']
+            )
+            fig.add_vline(x=hour, line_dash="dash", line_color="red", annotation_text="Your time")
+            st.plotly_chart(fig, use_container_width=True)
 
 else:
     # Welcome screen
@@ -369,31 +380,32 @@ else:
     
     col1, col2 = st.columns(2)
     
-    with col1:
-        platform_perf = training_data.groupby('platform')['engagement_rate'].agg(['mean', 'count']).reset_index()
+with col1:
+    if sample_stats and 'avg_engagement_by_platform' in sample_stats:
+        platform_data = pd.DataFrame(
+            list(sample_stats['avg_engagement_by_platform'].items()),
+            columns=['platform', 'engagement_rate']
+        )
         fig = px.bar(
-            platform_perf,
+            platform_data,
             x='platform',
-            y='mean',
+            y='engagement_rate',
             title='Average Engagement by Platform',
-            labels={'mean': 'Avg Engagement Rate (%)', 'platform': 'Platform'},
-            color='mean',
+            labels={'engagement_rate': 'Avg Engagement Rate (%)', 'platform': 'Platform'},
+            color='engagement_rate',
             color_continuous_scale='Viridis'
         )
         st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        content_perf = training_data.groupby('content_type')['engagement_rate'].mean().reset_index()
-        fig = px.bar(
-            content_perf,
-            x='content_type',
-            y='engagement_rate',
-            title='Average Engagement by Content Type',
-            labels={'engagement_rate': 'Avg Engagement Rate (%)', 'content_type': 'Content Type'},
-            color='engagement_rate',
-            color_continuous_scale='Plasma'
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Platform data not available")
+
+with col2:
+    if insights:
+        # Use insights data for content type visualization
+        st.metric("Best Content Type", insights['best_content_type'])
+        st.metric("Average Engagement", f"{insights['avg_engagement']:.2f}%")
+    else:
+        st.info("Content type data not available")    
 
 # Footer
 st.markdown("---")
