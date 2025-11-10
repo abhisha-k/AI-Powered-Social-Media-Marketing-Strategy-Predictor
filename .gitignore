@@ -1,0 +1,19 @@
+# Model files (too large for GitHub)
+*.joblib
+*.pkl
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+env/
+
+# Data
+social_media_dataset.csv
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
