@@ -14,8 +14,8 @@ import os
 import gdown
 
 # Model file IDs from Google Drive
-MODEL_FILE_ID = "YOUR_MODEL_FILE_ID_HERE"
-INSIGHTS_FILE_ID = "YOUR_INSIGHTS_FILE_ID_HERE"
+MODEL_FILE_ID = "1GV-_1h52wD_BG5P67dq4z-ZwaSRxoG_H"
+INSIGHTS_FILE_ID = "1QMWZy3_lmG5VpafRJRnOVsMK81q3z9di"
 
 # Function to download models if not present
 def ensure_models_downloaded():
@@ -740,4 +740,5 @@ st.markdown("""
             💡 Pro Tip: More training data = More accurate predictions
         </p>
     </div>
+
     """, unsafe_allow_html=True)
